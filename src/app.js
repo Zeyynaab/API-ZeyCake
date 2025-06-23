@@ -7,8 +7,8 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const errorHandler = require('./middleware/errorHandler');
-const authMiddleware = require('./middleware/auth');
-
+const path = require('path');
+const authMiddleware = require(path.join(__dirname, 'middleware', 'auth'));
 //Import des modeles
 const User = require('./models/user');
 const Product = require('./models/produits');
