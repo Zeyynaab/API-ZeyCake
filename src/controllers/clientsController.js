@@ -1,169 +1,147 @@
-const { clients, commandes, generateId } = require('../data/database');
+const Client = require('../models/clients');
+const Commande = require('../models/commandes');
+const { v4: uuidv4 } = require('uuid');
+const { Op } = require('sequelize');
 
 // Récupérer tous les clients
-exports.getAllClients = (req, res) => {
+exports.getAllClients = async (req, res) => {
     const { recherche, ville } = req.query;
 
-    let filteredClients = [...clients];
+    let where = {};
 
-    // Recherche par nom, prénom ou email
     if (recherche) {
-        const searchTerm = recherche.toLowerCase();
-        filteredClients = filteredClients.filter(c =>
-            c.nom.toLowerCase().includes(searchTerm) ||
-            c.prenom.toLowerCase().includes(searchTerm) ||
-            c.email.toLowerCase().includes(searchTerm)
-        );
+        const term = `%${recherche.toLowerCase()}%`;
+        where = {
+            ...where,
+            [Op.or]: [
+                { nom: { [Op.like]: term } },
+                { prenom: { [Op.like]: term } },
+                { email: { [Op.like]: term } },
+            ]
+        };
     }
 
-    // Filtrer par ville
-    if (ville) {
-        filteredClients = filteredClients.filter(c =>
-            c.adresse.ville.toLowerCase().includes(ville.toLowerCase())
-        );
-    }
+    const clients = await Client.findAll({ where });
+
+    const filtered = ville
+        ? clients.filter(c => {
+            const adresse = JSON.parse(c.adresse);
+            return adresse.ville.toLowerCase().includes(ville.toLowerCase());
+        })
+        : clients;
 
     res.json({
         success: true,
-        data: filteredClients,
-        total: filteredClients.length,
+        data: filtered,
+        total: filtered.length
     });
 };
 
 // Récupérer un client par ID
-exports.getClientById = (req, res) => {
-    const client = clients.find(c => c.id === req.params.id);
+exports.getClientById = async (req, res) => {
+    const client = await Client.findByPk(req.params.id);
     if (!client) {
-        return res.status(404).json({
-            success: false,
-            message: 'Client non trouvé',
-        });
+        return res.status(404).json({ success: false, message: 'Client non trouvé' });
     }
 
-    // Ajouter l'historique des commandes
-    const commandesClient = commandes.filter(cmd => cmd.clientId === client.id);
+    const commandesClient = await Commande.findAll({ where: { clientId: req.params.id } });
+
     res.json({
         success: true,
         data: {
-            ...client,
+            ...client.toJSON(),
             commandes: commandesClient,
-            totalCommandes: commandesClient.length,
-        },
+            totalCommandes: commandesClient.length
+        }
     });
 };
 
 // Créer un nouveau client
-exports.createClient = (req, res, next) => {
+exports.createClient = async (req, res, next) => {
     try {
-        // Vérifier si l'email existe déjà
-        const existingClient = clients.find(c => c.email === req.body.email);
-        if (existingClient) {
-            return res.status(400).json({
-                success: false,
-                message: 'Un client avec cet email existe déjà',
-            });
+        const existing = await Client.findOne({ where: { email: req.body.email } });
+        if (existing) {
+            return res.status(400).json({ success: false, message: 'Email déjà utilisé' });
         }
 
-        const nouveauClient = {
-            id: generateId(),
+        const nouveauClient = await Client.create({
+            id: uuidv4(),
             ...req.body,
             createdAt: new Date(),
-            updatedAt: new Date(),
-        };
-
-        clients.push(nouveauClient);
-        res.status(201).json({
-            success: true,
-            message: 'Client créé avec succès',
-            data: nouveauClient,
+            updatedAt: new Date()
         });
-    } catch (error) {
-        next(error);
+
+        res.status(201).json({ success: true, data: nouveauClient });
+    } catch (err) {
+        next(err);
     }
 };
 
 // Mettre à jour un client
-exports.updateClient = (req, res, next) => {
+exports.updateClient = async (req, res, next) => {
     try {
-        const index = clients.findIndex(c => c.id === req.params.id);
-        if (index === -1) {
-            return res.status(404).json({
-                success: false,
-                message: 'Client non trouvé',
-            });
+        const client = await Client.findByPk(req.params.id);
+        if (!client) {
+            return res.status(404).json({ success: false, message: 'Client non trouvé' });
         }
 
-        // Vérifier si l'email existe déjà (sauf pour le client actuel)
-        const existingClient = clients.find(c => c.email === req.body.email && c.id !== req.params.id);
-        if (existingClient) {
-            return res.status(400).json({
-                success: false,
-                message: 'Un autre client avec cet email existe déjà',
-            });
-        }
-
-        clients[index] = {
-            ...clients[index],
-            ...req.body,
-            updatedAt: new Date(),
-        };
-
-        res.json({
-            success: true,
-            message: 'Client mis à jour avec succès',
-            data: clients[index],
+        const emailExists = await Client.findOne({
+            where: {
+                email: req.body.email,
+                id: { [Op.ne]: req.params.id }
+            }
         });
-    } catch (error) {
-        next(error);
+
+        if (emailExists) {
+            return res.status(400).json({ success: false, message: 'Email déjà utilisé' });
+        }
+
+        await client.update({
+            ...req.body,
+            updatedAt: new Date()
+        });
+
+        res.json({ success: true, message: 'Client mis à jour', data: client });
+    } catch (err) {
+        next(err);
     }
 };
 
 // Supprimer un client
-exports.deleteClient = (req, res) => {
-    const index = clients.findIndex(c => c.id === req.params.id);
-    if (index === -1) {
-        return res.status(404).json({
-            success: false,
-            message: 'Client non trouvé',
-        });
+exports.deleteClient = async (req, res) => {
+    const client = await Client.findByPk(req.params.id);
+    if (!client) {
+        return res.status(404).json({ success: false, message: 'Client non trouvé' });
     }
 
-    // Vérifier s'il y a des commandes actives
-    const commandesActives = commandes.filter(cmd =>
-        cmd.clientId === req.params.id &&
-        !['livree', 'annulee'].includes(cmd.statut)
-    );
+    const commandesActives = await Commande.findAll({
+        where: {
+            clientId: req.params.id,
+            statut: { [Op.notIn]: ['livree', 'annulee'] }
+        }
+    });
 
     if (commandesActives.length > 0) {
-        return res.status(400).json({
-            success: false,
-            message: 'Impossible de supprimer un client avec des commandes actives',
-        });
+        return res.status(400).json({ success: false, message: 'Client a des commandes actives' });
     }
 
-    const clientSupprime = clients.splice(index, 1);
+    await client.destroy();
 
-    res.json({
-        success: true,
-        message: 'Client supprimé avec succès',
-        data: clientSupprime,
-    });
+    res.json({ success: true, message: 'Client supprimé' });
 };
 
 // Récupérer les commandes d'un client
-exports.getClientCommandes = (req, res) => {
-    const client = clients.find(c => c.id === req.params.id);
+exports.getClientCommandes = async (req, res) => {
+    const client = await Client.findByPk(req.params.id);
     if (!client) {
-        return res.status(404).json({
-            success: false,
-            message: 'Client non trouvé',
-        });
+        return res.status(404).json({ success: false, message: 'Client non trouvé' });
     }
 
-    const commandesClient = commandes.filter(cmd => cmd.clientId === req.params.id);
+    const commandesClient = await Commande.findAll({ where: { clientId: req.params.id } });
+
     res.json({
         success: true,
         data: commandesClient,
-        total: commandesClient.length,
+        total: commandesClient.length
     });
 };

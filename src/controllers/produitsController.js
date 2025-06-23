@@ -1,40 +1,34 @@
-const { produits, generateId } = require('../data/database');
+const { v4: uuidv4 } = require('uuid');
+const { Op } = require('sequelize');
+const Produit = require('../models/produits');
 
 // Récupérer tous les produits
-exports.getAllProduits = (req, res) => {
+exports.getAllProduits = async (req, res) => {
     const { categorie, disponible, recherche } = req.query;
 
-    let filteredProduits = [...produits];
+    let where = {};
 
-    // Filtrer par catégorie
-    if (categorie) {
-        filteredProduits = filteredProduits.filter(p => p.categorie === categorie);
-    }
-
-    // Filtrer par disponibilité
-    if (disponible !== undefined) {
-        filteredProduits = filteredProduits.filter(p => p.disponible === (disponible === 'true'));
-    }
-
-    // Recherche par nom ou description
+    if (categorie) where.categorie = categorie;
+    if (disponible !== undefined) where.disponible = disponible === 'true';
     if (recherche) {
-        const searchTerm = recherche.toLowerCase();
-        filteredProduits = filteredProduits.filter(p =>
-            p.nom.toLowerCase().includes(searchTerm) ||
-            p.description.toLowerCase().includes(searchTerm)
-        );
+        where[Op.or] = [
+            { nom: { [Op.like]: `%${recherche}%` } },
+            { description: { [Op.like]: `%${recherche}%` } }
+        ];
     }
+
+    const produits = await Produit.findAll({ where });
 
     res.json({
         success: true,
-        data: filteredProduits,
-        total: filteredProduits.length,
+        data: produits,
+        total: produits.length,
     });
 };
 
 // Récupérer un produit par ID
-exports.getProduitById = (req, res) => {
-    const produit = produits.find(p => p.id === req.params.id);
+exports.getProduitById = async (req, res) => {
+    const produit = await Produit.findByPk(req.params.id);
     if (!produit) {
         return res.status(404).json({
             success: false,
@@ -49,21 +43,19 @@ exports.getProduitById = (req, res) => {
 };
 
 // Créer un nouveau produit
-exports.createProduit = (req, res, next) => {
+exports.createProduit = async (req, res, next) => {
     try {
-        const nouveauProduit = {
-            id: generateId(),
+        const produit = await Produit.create({
+            id: uuidv4(),
             ...req.body,
             createdAt: new Date(),
             updatedAt: new Date(),
-        };
-
-        produits.push(nouveauProduit);
+        });
 
         res.status(201).json({
             success: true,
             message: 'Produit créé avec succès',
-            data: nouveauProduit,
+            data: produit,
         });
     } catch (error) {
         next(error);
@@ -71,26 +63,25 @@ exports.createProduit = (req, res, next) => {
 };
 
 // Mettre à jour un produit
-exports.updateProduit = (req, res, next) => {
+exports.updateProduit = async (req, res, next) => {
     try {
-        const index = produits.findIndex(p => p.id === req.params.id);
-        if (index === -1) {
+        const produit = await Produit.findByPk(req.params.id);
+        if (!produit) {
             return res.status(404).json({
                 success: false,
                 message: 'Produit non trouvé',
             });
         }
 
-        produits[index] = {
-            ...produits[index],
+        await produit.update({
             ...req.body,
             updatedAt: new Date(),
-        };
+        });
 
         res.json({
             success: true,
             message: 'Produit mis à jour avec succès',
-            data: produits[index],
+            data: produit,
         });
     } catch (error) {
         next(error);
@@ -98,21 +89,21 @@ exports.updateProduit = (req, res, next) => {
 };
 
 // Supprimer un produit
-exports.deleteProduit = (req, res) => {
-    const index = produits.findIndex(p => p.id === req.params.id);
-    if (index === -1) {
+exports.deleteProduit = async (req, res) => {
+    const produit = await Produit.findByPk(req.params.id);
+    if (!produit) {
         return res.status(404).json({
             success: false,
             message: 'Produit non trouvé',
         });
     }
 
-    const produitSupprime = produits.splice(index, 1);
+    await produit.destroy();
 
     res.json({
         success: true,
         message: 'Produit supprimé avec succès',
-        data: produitSupprime,
+        data: produit,
     });
 };
 

@@ -1,23 +1,36 @@
 const { Model, DataTypes } = require('sequelize');
-const sequelize = require('../database');
+const sequelize = require('../database'); // ou ../config/sequelize si tu as déplacé
 
-class Client extends Model { }
+class Client extends Model {}
 
 Client.init({
-    id: {
-        type: DataTypes.STRING,
-        primaryKey: true,
-        allowNull: false,
-    },
-    nom: DataTypes.STRING,
-    prenom: DataTypes.STRING,
-    email: DataTypes.STRING,
-    telephone: DataTypes.STRING,
-    adresse: DataTypes.JSON, // Stocker l'adresse en JSON
-    createdAt: {
-        type: DataTypes.DATE,
-        defaultValue: DataTypes.NOW,
-    },
-}, { sequelize, modelName: 'client' });
+  id: {
+    type: DataTypes.UUID, // Meilleure pratique : UUID
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  nom: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  prenom: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  email: {
+    type: DataTypes.STRING,
+    unique: true,
+    allowNull: false,
+  },
+  telephone: DataTypes.STRING,
+  adresse: {
+    type: DataTypes.JSON, // JSON pour l’objet adresse
+    allowNull: true,
+  },
+}, {
+  sequelize,
+  modelName: 'Client',
+  timestamps: true, // ajoute createdAt et updatedAt automatiquement
+});
 
 module.exports = Client;

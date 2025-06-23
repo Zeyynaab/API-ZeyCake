@@ -23,6 +23,53 @@ const commandesRoutes = require('./routes/commandes');
 const clientsRoutes = require('./routes/clients');
 const ingredientsRoutes = require('./routes/ingredients');
 
+//fonction database()
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
+
+const dataBase = async () => {
+  const admin = await User.findOne({ where: { email: 'admin@patisserie.com' } });
+
+  if (!admin) {
+    await User.create({
+      id: uuidv4(),
+      nom: 'Admin',
+      prenom: 'Super',
+      email: 'admin@patisserie.com',
+      password: bcrypt.hashSync('123456', 10),
+      role: 'admin',
+      createdAt: new Date(),
+    });
+
+    await Product.bulkCreate([
+      {
+        id: uuidv4(),
+        nom: 'Tarte aux Fraises',
+        description: 'Délicieuse tarte aux fraises fraîches sur pâte sablée',
+        prix: 18.50,
+        categorie: 'tartes',
+        ingredients: JSON.stringify(['fraises', 'pâte sablée', 'crème pâtissière']),
+        tempsPreparation: 120,
+        difficulte: 'moyen',
+        disponible: true,
+        createdAt: new Date(),
+      },
+      {
+        id: uuidv4(),
+        nom: 'Éclair au Chocolat',
+        description: 'Éclair garni de crème au chocolat et glaçage chocolat',
+        prix: 4.50,
+        categorie: 'viennoiseries',
+        ingredients: JSON.stringify(['pâte à choux', 'crème chocolat', 'glaçage']),
+        tempsPreparation: 90,
+        difficulte: 'difficile',
+        disponible: true,
+        createdAt: new Date(),
+      },
+    ]);
+  }
+};
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -71,8 +118,10 @@ app.use(errorHandler);
 //Synchronisation des modeles avec la bdd et demarrage serveur
 const start = async () => {
   try {
-    await sequelize.sync({ force: true }); // Synchroniser les modèles
+    await sequelize.sync({ force: false }); // Synchroniser les modèles
     console.log('Base de données synchronisée');
+    await dataBase(); //ajout des données de base(admin, produits,etc..)
+
     //Demarrage du serveur
     app.listen(PORT, () => {
       console.log(`🚀 Serveur démarré sur le port ${PORT}`);

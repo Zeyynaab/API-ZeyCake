@@ -1,20 +1,42 @@
 const { Model, DataTypes } = require('sequelize');
-const sequelize = require('../database'); // Importer la connexion
+const sequelize = require('../database');
 
-class User extends Model { }
+class User extends Model {}
 
 User.init({
-    id: {
-        type: DataTypes.STRING,
-        primaryKey: true,
-        allowNull: false,
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4, // Génère automatiquement un UUID
+    primaryKey: true,
+  },
+  nom: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  prenom: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+    validate: {
+      isEmail: true,
     },
-    nom: DataTypes.STRING,
-    prenom: DataTypes.STRING,
-    email: DataTypes.STRING,
-    password: DataTypes.STRING,
-    role: DataTypes.STRING,
-    createdAt: DataTypes.DATE,
-}, { sequelize, modelName: 'user' });
+  },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  role: {
+    type: DataTypes.STRING,
+    defaultValue: 'client', // ou 'admin'
+  },
+}, {
+  sequelize,
+  modelName: 'User',
+  timestamps: true, // Ajoute automatiquement createdAt et updatedAt
+});
 
 module.exports = User;

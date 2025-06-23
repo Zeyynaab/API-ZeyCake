@@ -1,10 +1,10 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { users, generateId } = require('../data/database');
-
+const { v4: uuidv4 } = require('uuid');
+const User = require('../models/users');
 
 // Obtenir le profil utilisateur actuel
-exports.getProfile = (req, res) => {
+exports.getProfile = async (req, res) => {
   res.json({
     success: true,
     data: {
@@ -25,32 +25,38 @@ exports.updateUser = async (req, res, next) => {
     const { id } = req.params;
     const { nom, prenom, email, password, role } = req.body;
 
-    const userIndex = users.findIndex(user => user.id === id);
-    if (userIndex === -1) {
+    const user = await User.findByPk(id);
+    if (!user) {
       return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
     }
 
-    // Hasher le mot de passe si mis à jour
-    const hashedPassword = password ? await bcrypt.hash(password, 10) : users[userIndex].password;
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : user.password;
 
-    const updatedUser = { id, nom, prenom, email, password: hashedPassword, role };
-    users[userIndex] = updatedUser;
+    await user.update({
+      nom,
+      prenom,
+      email,
+      password: hashedPassword,
+      role,
+      updatedAt: new Date(),
+    });
 
-    res.json({ success: true, message: 'Utilisateur mis à jour avec succès', data: updatedUser });
+    res.json({ success: true, message: 'Utilisateur mis à jour avec succès', data: user });
   } catch (error) {
     next(error);
   }
 };
 
 // Supprimer un utilisateur
-exports.deleteUser = (req, res) => {
+exports.deleteUser = async (req, res) => {
   const { id } = req.params;
 
-  const userIndex = users.findIndex(user => user.id === id);
-  if (userIndex === -1) {
+  const user = await User.findByPk(id);
+  if (!user) {
     return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
   }
 
-  users.splice(userIndex, 1);
+  await user.destroy();
+
   res.json({ success: true, message: 'Utilisateur supprimé avec succès' });
 };

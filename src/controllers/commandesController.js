@@ -1,119 +1,98 @@
-const { commandes, clients, produits, generateId } = require('../data/database');
+const { v4: uuidv4 } = require('uuid');
+const { Op } = require('sequelize');
+const Commande = require('../models/commandes');
+const Client = require('../models/clients');
+const Produit = require('../models/produits');
 
 // Récupérer toutes les commandes
-exports.getAllCommandes = (req, res) => {
+exports.getAllCommandes = async (req, res) => {
     const { statut, clientId, dateDebut, dateFin } = req.query;
 
-    let filteredCommandes = [...commandes];
+    let where = {};
 
-    // Filtrer par statut
-    if (statut) {
-        filteredCommandes = filteredCommandes.filter(c => c.statut === statut);
+    if (statut) where.statut = statut;
+    if (clientId) where.clientId = clientId;
+    if (dateDebut || dateFin) {
+        where.dateCommande = {};
+        if (dateDebut) where.dateCommande[Op.gte] = new Date(dateDebut);
+        if (dateFin) where.dateCommande[Op.lte] = new Date(dateFin);
     }
 
-    // Filtrer par client
-    if (clientId) {
-        filteredCommandes = filteredCommandes.filter(c => c.clientId === clientId);
-    }
+    const commandes = await Commande.findAll({ where });
 
-    // Filtrer par date
-    if (dateDebut) {
-        filteredCommandes = filteredCommandes.filter(c =>
-            new Date(c.dateCommande) >= new Date(dateDebut)
-        );
-    }
-    if (dateFin) {
-        filteredCommandes = filteredCommandes.filter(c =>
-            new Date(c.dateCommande) <= new Date(dateFin)
-        );
-    }
-
-    // Enrichir avec les informations des clients et produits
-    const enrichedCommandes = filteredCommandes.map(commande => {
-        const client = clients.find(c => c.id === commande.clientId);
-        const produitsDetails = commande.produits.map(item => {
-            const produit = produits.find(p => p.id === item.produitId);
+    const enriched = await Promise.all(commandes.map(async (cmd) => {
+        const client = await Client.findByPk(cmd.clientId);
+        const produitsCommandes = JSON.parse(cmd.produits);
+        const produitsDetails = await Promise.all(produitsCommandes.map(async (p) => {
+            const produit = await Produit.findByPk(p.produitId);
             return {
-                ...item,
-                produit: produit || null,
+                ...p,
+                produit: produit || null
             };
-        });
+        }));
         return {
-            ...commande,
-            client: client || null,
-            produits: produitsDetails,
+            ...cmd.toJSON(),
+            client,
+            produits: produitsDetails
         };
-    });
+    }));
 
     res.json({
         success: true,
-        data: enrichedCommandes,
-        total: enrichedCommandes.length,
+        data: enriched,
+        total: enriched.length
     });
 };
 
 // Récupérer une commande par ID
-exports.getCommandeById = (req, res) => {
-    const commande = commandes.find(c => c.id === req.params.id);
+exports.getCommandeById = async (req, res) => {
+    const commande = await Commande.findByPk(req.params.id);
     if (!commande) {
-        return res.status(404).json({
-            success: false,
-            message: 'Commande non trouvée',
-        });
+        return res.status(404).json({ success: false, message: 'Commande non trouvée' });
     }
 
-    // Enrichir avec les informations du client et des produits
-    const client = clients.find(c => c.id === commande.clientId);
-    const produitsDetails = commande.produits.map(item => {
-        const produit = produits.find(p => p.id === item.produitId);
-        return {
-            ...item,
-            produit: produit || null,
-        };
-    });
-
-    const enrichedCommande = {
-        ...commande,
-        client: client || null,
-        produits: produitsDetails,
-    };
+    const client = await Client.findByPk(commande.clientId);
+    const produitsCommandes = JSON.parse(commande.produits);
+    const produitsDetails = await Promise.all(produitsCommandes.map(async (p) => {
+        const produit = await Produit.findByPk(p.produitId);
+        return { ...p, produit: produit || null };
+    }));
 
     res.json({
         success: true,
-        data: enrichedCommande,
+        data: {
+            ...commande.toJSON(),
+            client,
+            produits: produitsDetails
+        }
     });
 };
 
 // Créer une nouvelle commande
-exports.createCommande = (req, res, next) => {
+exports.createCommande = async (req, res, next) => {
     try {
-        const { clientId, produits: produitsCommande, dateRecuperation, commentaires } = req.body;
+        const { clientId, produits, dateRecuperation, commentaires } = req.body;
 
-        // Vérifier que le client existe
-        const client = clients.find(c => c.id === clientId);
+        const client = await Client.findByPk(clientId);
         if (!client) {
-            return res.status(400).json({
-                success: false,
-                message: 'Client non trouvé',
-            });
+            return res.status(400).json({ success: false, message: 'Client non trouvé' });
         }
 
-        // Vérifier que tous les produits existent et calculer le total
         let total = 0;
         const produitsValides = [];
 
-        for (const item of produitsCommande) {
-            const produit = produits.find(p => p.id === item.produitId);
+        for (const item of produits) {
+            const produit = await Produit.findByPk(item.produitId);
             if (!produit) {
                 return res.status(400).json({
                     success: false,
-                    message: `Produit avec l'ID ${item.produitId} non trouvé`,
+                    message: `Produit ${item.produitId} introuvable`
                 });
             }
             if (!produit.disponible) {
                 return res.status(400).json({
                     success: false,
-                    message: `Le produit "${produit.nom}" n'est pas disponible`,
+                    message: `Produit "${produit.nom}" non disponible`
                 });
             }
             total += produit.prix * item.quantite;
@@ -121,91 +100,64 @@ exports.createCommande = (req, res, next) => {
                 produitId: item.produitId,
                 quantite: item.quantite,
                 prixUnitaire: produit.prix,
-                personnalisation: item.personnalisation || '',
+                personnalisation: item.personnalisation || ''
             });
         }
 
-        const nouvelleCommande = {
-            id: generateId(),
+        const commande = await Commande.create({
+            id: uuidv4(),
             clientId,
-            produits: produitsValides,
+            produits: JSON.stringify(produitsValides),
             dateCommande: new Date(),
             dateRecuperation: new Date(dateRecuperation),
             statut: 'en-attente',
             total: parseFloat(total.toFixed(2)),
-            commentaires: commentaires || '',
+            commentaires,
             createdAt: new Date(),
-            updatedAt: new Date(),
-        };
-
-        commandes.push(nouvelleCommande);
-        res.status(201).json({
-            success: true,
-            message: 'Commande créée avec succès',
-            data: nouvelleCommande,
+            updatedAt: new Date()
         });
-    } catch (error) {
-        next(error);
+
+        res.status(201).json({ success: true, data: commande });
+    } catch (err) {
+        next(err);
     }
 };
 
 // Mettre à jour le statut d'une commande
-exports.updateCommandeStatut = (req, res, next) => {
+exports.updateCommandeStatut = async (req, res, next) => {
     try {
         const { statut } = req.body;
-        const statutsValides = ['en-attente', 'confirmee', 'en-preparation', 'prete', 'livree', 'annulee'];
+        const valides = ['en-attente', 'confirmee', 'en-preparation', 'prete', 'livree', 'annulee'];
 
-        if (!statut || !statutsValides.includes(statut)) {
-            return res.status(400).json({
-                success: false,
-                message: `Statut invalide. Statuts valides: ${statutsValides.join(', ')}`,
-            });
+        if (!statut || !valides.includes(statut)) {
+            return res.status(400).json({ success: false, message: `Statut invalide. Valides: ${valides.join(', ')}` });
         }
 
-        const index = commandes.findIndex(c => c.id === req.params.id);
-        if (index === -1) {
-            return res.status(404).json({
-                success: false,
-                message: 'Commande non trouvée',
-            });
+        const commande = await Commande.findByPk(req.params.id);
+        if (!commande) {
+            return res.status(404).json({ success: false, message: 'Commande non trouvée' });
         }
 
-        commandes[index].statut = statut;
-        commandes[index].updatedAt = new Date();
+        await commande.update({ statut, updatedAt: new Date() });
 
-        res.json({
-            success: true,
-            message: 'Statut de la commande mis à jour avec succès',
-            data: commandes[index],
-        });
-    } catch (error) {
-        next(error);
+        res.json({ success: true, message: 'Statut mis à jour', data: commande });
+    } catch (err) {
+        next(err);
     }
 };
 
 // Supprimer une commande
-exports.deleteCommande = (req, res) => {
-    const index = commandes.findIndex(c => c.id === req.params.id);
-    if (index === -1) {
-        return res.status(404).json({
-            success: false,
-            message: 'Commande non trouvée',
-        });
+exports.deleteCommande = async (req, res) => {
+    const commande = await Commande.findByPk(req.params.id);
+    if (!commande) {
+        return res.status(404).json({ success: false, message: 'Commande non trouvée' });
     }
 
-    // Seules les commandes en attente peuvent être supprimées
-    if (commandes[index].statut !== 'en-attente') {
-        return res.status(400).json({
-            success: false,
-            message: 'Seules les commandes en attente peuvent être supprimées',
-        });
+    if (commande.statut !== 'en-attente') {
+        return res.status(400).json({ success: false, message: 'Seules les commandes en attente peuvent être supprimées' });
     }
 
-    const commandeSupprimee = commandes.splice(index, 1);
+    await commande.destroy();
 
-    res.json({
-        success: true,
-        message: 'Commande supprimée avec succès',
-        data: commandeSupprimee,
-    });
+    res.json({ success: true, message: 'Commande supprimée avec succès' });
 };
