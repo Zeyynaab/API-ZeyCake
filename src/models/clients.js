@@ -22,11 +22,16 @@ Client.init({
     unique: true,
     allowNull: false,
   },
+  password: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
   telephone: DataTypes.STRING,
   adresse: {
     type: DataTypes.JSON, // JSON pour l’objet adresse
     allowNull: true,
   },
+  
 }, {
   sequelize,
   modelName: 'Client',
