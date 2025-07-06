@@ -10,7 +10,7 @@ require('dotenv').config();
 
 const errorHandler = require('./middleware/errorHandler');
 const path = require('path');
-const authMiddleware = require(path.join(__dirname, 'middleware', 'auth'));
+const authMiddleware = require('./middleware/auth');
 //Import des modeles
 const User = require('./models/user');
 const Product = require('./models/produits');
@@ -47,10 +47,9 @@ const ingredientsRoutes = require('./routes/ingredients');
 // Routes publiques
 app.use('/api/auth', authRoutes);
 app.use('/api/clients/auth', clientAuth);
-
+app.use('/api/produits', produitsRoutes);
 
 // Routes protégées
-app.use('/api/produits', authMiddleware, produitsRoutes);
 app.use('/api/commandes', authMiddleware, commandesRoutes);
 app.use('/api/clients', authMiddleware, clientsRoutes);
 app.use('/api/ingredients', authMiddleware, ingredientsRoutes);
