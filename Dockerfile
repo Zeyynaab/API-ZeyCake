@@ -1,12 +1,16 @@
 FROM node:20
-
+#dossier pour l'app
 WORKDIR /usr/src/app
 
+#fichiers de dependances et installation
 COPY package*.json ./
 RUN npm install
 
+#copie du reste du code
 COPY . .
 
-EXPOSE 3000
 RUN mkdir -p /data
-CMD ["npm", "start"]
+
+EXPOSE 3000
+
+CMD ["npm", "src/app.js"]
