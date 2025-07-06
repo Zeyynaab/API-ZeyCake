@@ -21,7 +21,9 @@ const Ingredient = require('./models/ingredients');
 //creation de l'app
 const app = express();
 const PORT = process.env.PORT || 3000;
-
+app.listen(PORT, () => {
+  console.log(`Serveur démarré sur le port ${PORT}`);
+});
 // Configuration du rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
